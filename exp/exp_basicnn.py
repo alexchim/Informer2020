@@ -1,61 +1,52 @@
-from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred
+import torch
+import os
+import time
+
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+
 from exp.exp_basic import Exp_Basic
-from models.model import Informer, InformerStack
+
 from models.BasicNN.model import BasicNN
 
-from utils.tools import EarlyStopping, adjust_learning_rate
-from utils.metrics import metric
-
 import numpy as np
+import pandas as pd
 
 import torch
 import torch.nn as nn
 from torch import optim
 from torch.utils.data import DataLoader
 
-import os
-import time
+from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred
 
-import warnings
-warnings.filterwarnings('ignore')
+from utils.tools import EarlyStopping, adjust_learning_rate
+from utils.metrics import metric
 
-class Exp_Informer(Exp_Basic):
+class Exp_BasicNN(Exp_Basic):
     def __init__(self, args):
-        super(Exp_Informer, self).__init__(args)
+        super(Exp_BasicNN, self).__init__(args)
+        self.optimizer = self._select_optimizer()
+        self.criterion = self._select_criterion()
     
     def _build_model(self):
-        model_dict = {
-            'informer':Informer,
-            'informerstack':InformerStack,
-        }
-        if self.args.model=='informer' or self.args.model=='informerstack':
-            e_layers = self.args.e_layers if self.args.model=='informer' else self.args.s_layers
-            model = model_dict[self.args.model](
-                self.args.enc_in,
-                self.args.dec_in, 
-                self.args.c_out, 
-                self.args.seq_len, 
-                self.args.label_len,
-                self.args.pred_len, 
-                self.args.factor,
-                self.args.d_model, 
-                self.args.n_heads, 
-                e_layers, # self.args.e_layers,
-                self.args.d_layers, 
-                self.args.d_ff,
-                self.args.dropout, 
-                self.args.attn,
-                self.args.embed,
-                self.args.freq,
-                self.args.activation,
-                self.args.output_attention,
-                self.args.distil,
-                self.args.mix,
-                self.device
-            ).float()
-        
-        if self.args.use_multi_gpu and self.args.use_gpu:
-            model = nn.DataParallel(model, device_ids=self.args.device_ids)
+        # Configuration for the BasicNN model
+        enc_in = self.args.enc_in
+        dec_in = self.args.dec_in
+        c_out = self.args.c_out
+        seq_len = self.args.seq_len
+        label_len = self.args.label_len
+        pred_len = self.args.pred_len
+
+        hidden_dim = self.args.hidden_dim
+        num_layers = self.args.num_layers
+        kernel_size = self.args.kernel_size
+        dropout = self.args.dropout
+
+        # Creating the BasicNN model with the given configuration
+        model = BasicNN(enc_in=enc_in, dec_in=dec_in, c_out=c_out, seq_len=seq_len,
+                        label_len=label_len, pred_len=pred_len, hidden_dim=hidden_dim,
+                        num_layers=num_layers, kernel_size=kernel_size, dropout=dropout)
         return model
 
     def _get_data(self, flag):
@@ -111,19 +102,8 @@ class Exp_Informer(Exp_Basic):
         criterion =  nn.MSELoss()
         return criterion
 
-    def vali(self, vali_data, vali_loader, criterion):
-        self.model.eval()
-        total_loss = []
-        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(vali_loader):
-            pred, true = self._process_one_batch(
-                vali_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
-            loss = criterion(pred.detach().cpu(), true.detach().cpu())
-            total_loss.append(loss)
-        total_loss = np.average(total_loss)
-        self.model.train()
-        return total_loss
-
     def train(self, setting):
+        # Get training data loader
         train_data, train_loader = self._get_data(flag = 'train')
         vali_data, vali_loader = self._get_data(flag = 'val')
         test_data, test_loader = self._get_data(flag = 'test')
@@ -133,31 +113,32 @@ class Exp_Informer(Exp_Basic):
             os.makedirs(path)
 
         time_now = time.time()
-        
+
         train_steps = len(train_loader)
         early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
+
+        optimizer = self.optimizer
+        criterion = self.criterion
         
-        model_optim = self._select_optimizer()
-        criterion =  self._select_criterion()
 
-        if self.args.use_amp:
-            scaler = torch.cuda.amp.GradScaler()
-
+        
         for epoch in range(self.args.train_epochs):
             iter_count = 0
+            total_loss = 0
             train_loss = []
-            
-            self.model.train()
+
+            self.model.train()  # Set the model to training mode
             epoch_time = time.time()
             for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(train_loader):
                 iter_count += 1
-                
-                model_optim.zero_grad()
+
                 pred, true = self._process_one_batch(
                     train_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
+                optimizer.zero_grad()
                 loss = criterion(pred, true)
                 train_loss.append(loss.item())
-                
+                total_loss += loss.item()
+
                 if (i+1) % 100==0:
                     print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
                     speed = (time.time()-time_now)/iter_count
@@ -165,14 +146,10 @@ class Exp_Informer(Exp_Basic):
                     print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
                     iter_count = 0
                     time_now = time.time()
+
+                loss.backward()
+                optimizer.step()
                 
-                if self.args.use_amp:
-                    scaler.scale(loss).backward()
-                    scaler.step(model_optim)
-                    scaler.update()
-                else:
-                    loss.backward()
-                    model_optim.step()
 
             print("Epoch: {} cost time: {}".format(epoch+1, time.time()-epoch_time))
             train_loss = np.average(train_loss)
@@ -185,13 +162,26 @@ class Exp_Informer(Exp_Basic):
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
+                
+            adjust_learning_rate(self.optimizer, epoch+1, self.args)
 
-            adjust_learning_rate(model_optim, epoch+1, self.args)
             
         best_model_path = path+'/'+'checkpoint.pth'
         self.model.load_state_dict(torch.load(best_model_path))
         
         return self.model
+
+    def vali(self, vali_data, vali_loader, criterion):
+        self.model.eval()
+        total_loss = []
+        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(vali_loader):
+            pred, true = self._process_one_batch(
+                vali_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
+            loss = criterion(pred.detach().cpu(), true.detach().cpu())
+            total_loss.append(loss)
+        total_loss = np.average(total_loss)
+        self.model.train()
+        return total_loss
 
     def test(self, setting):
         test_data, test_loader = self._get_data(flag='test')
@@ -228,63 +218,27 @@ class Exp_Informer(Exp_Basic):
 
         return
 
-    def predict(self, setting, load=False):
-        pred_data, pred_loader = self._get_data(flag='pred')
-        
-        if load:
-            path = os.path.join(self.args.checkpoints, setting)
-            best_model_path = path+'/'+'checkpoint.pth'
-            self.model.load_state_dict(torch.load(best_model_path))
-
-        self.model.eval()
-        
-        preds = []
-        
-        for i, (batch_x,batch_y,batch_x_mark,batch_y_mark) in enumerate(pred_loader):
-            pred, true = self._process_one_batch(
-                pred_data, batch_x, batch_y, batch_x_mark, batch_y_mark)
-            preds.append(pred.detach().cpu().numpy())
-
-        preds = np.array(preds)
-        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
-        
-        # result save
-        folder_path = './results/' + setting +'/'
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
-        
-        np.save(folder_path+'real_prediction.npy', preds)
-        
-        return
 
     def _process_one_batch(self, dataset_object, batch_x, batch_y, batch_x_mark, batch_y_mark):
         batch_x = batch_x.float().to(self.device)
-        batch_y = batch_y.float()
+        batch_y = batch_y.float().to(self.device)
 
-        batch_x_mark = batch_x_mark.float().to(self.device)
-        batch_y_mark = batch_y_mark.float().to(self.device)
+        # Assuming BasicNN does not need batch_x_mark and batch_y_mark
+        # Prepare decoder input
+        if self.args.padding == 0:
+            dec_inp = torch.zeros([batch_y.shape[0], self.args.pred_len, batch_y.shape[-1]]).float().to(self.device)
+        elif self.args.padding == 1:
+            dec_inp = torch.ones([batch_y.shape[0], self.args.pred_len, batch_y.shape[-1]]).float().to(self.device)
+        
+        dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).to(self.device)
 
-        # decoder input
-        if self.args.padding==0:
-            dec_inp = torch.zeros([batch_y.shape[0], self.args.pred_len, batch_y.shape[-1]]).float()
-        elif self.args.padding==1:
-            dec_inp = torch.ones([batch_y.shape[0], self.args.pred_len, batch_y.shape[-1]]).float()
-        dec_inp = torch.cat([batch_y[:,:self.args.label_len,:], dec_inp], dim=1).float().to(self.device)
-        # encoder - decoder
-        if self.args.use_amp:
-            with torch.cuda.amp.autocast():
-                if self.args.output_attention:
-                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                else:
-                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-        else:
-            if self.args.output_attention:
-                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-            else:
-                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+        # Forward pass
+        outputs = self.model(batch_x, dec_inp)
+
         if self.args.inverse:
             outputs = dataset_object.inverse_transform(outputs)
-        f_dim = -1 if self.args.features=='MS' else 0
-        batch_y = batch_y[:,-self.args.pred_len:,f_dim:].to(self.device)
+        
+        f_dim = -1 if self.args.features == 'MS' else 0
+        batch_y = batch_y[:, -self.args.pred_len:, f_dim:]
 
         return outputs, batch_y

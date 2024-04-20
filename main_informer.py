@@ -3,6 +3,9 @@ import os
 import torch
 
 from exp.exp_informer import Exp_Informer
+from exp.exp_SVR import Exp_SVR
+from exp.exp_RFR import Exp_RFR
+from exp.exp_basicnn import Exp_BasicNN
 
 parser = argparse.ArgumentParser(description='[Informer] Long Sequences Forecasting')
 
@@ -58,6 +61,12 @@ parser.add_argument('--gpu', type=int, default=0, help='gpu')
 parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False)
 parser.add_argument('--devices', type=str, default='0,1,2,3',help='device ids of multile gpus')
 
+# basicnn args
+parser.add_argument('--hidden_dim', type=int, default=256, help='hidden dimension')
+parser.add_argument('--num_layers', type=int, default=2, help='number of layers')
+parser.add_argument('--kernel_size', type=int, default=3, help='kernel size')
+parser.add_argument('--dropout', type=float, default=0.1, help='dropout rate')
+
 args = parser.parse_args()
 
 args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
@@ -90,7 +99,16 @@ args.freq = args.freq[-1:]
 print('Args in experiment:')
 print(args)
 
-Exp = Exp_Informer
+Exp_dict = {
+    'informer': Exp_Informer,
+    'informerstack': Exp_Informer,
+    'basic': Exp_BasicNN,
+    'SVR': Exp_SVR,
+    'RFR': Exp_RFR,
+}
+
+
+Exp = Exp_dict[args.model]
 
 for ii in range(args.itr):
     # setting record of experiments
