@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 from exp.exp_basic import Exp_Basic
 
 from models.BasicNN.model import BasicNN
+from models.CustomNN.model import CustomNN
 
 import numpy as np
 import pandas as pd
@@ -44,9 +45,15 @@ class Exp_BasicNN(Exp_Basic):
         dropout = self.args.dropout
 
         # Creating the BasicNN model with the given configuration
-        model = BasicNN(enc_in=enc_in, dec_in=dec_in, c_out=c_out, seq_len=seq_len,
-                        label_len=label_len, pred_len=pred_len, hidden_dim=hidden_dim,
-                        num_layers=num_layers, kernel_size=kernel_size, dropout=dropout)
+        if self.args.model == 'basic':
+            model = BasicNN(enc_in=enc_in, dec_in=dec_in, c_out=c_out, seq_len=seq_len,
+                            label_len=label_len, pred_len=pred_len, hidden_dim=hidden_dim,
+                            num_layers=num_layers, kernel_size=kernel_size, dropout=dropout)
+        if self.args.model == 'custom':
+            model = CustomNN(enc_in=enc_in, dec_in=dec_in, c_out=c_out, seq_len=seq_len,
+                            label_len=label_len, pred_len=pred_len, hidden_dim=hidden_dim,
+                            num_layers=num_layers, kernel_size=kernel_size, dropout=dropout)
+        
         return model
 
     def _get_data(self, flag):

@@ -65,7 +65,6 @@ parser.add_argument('--devices', type=str, default='0,1,2,3',help='device ids of
 parser.add_argument('--hidden_dim', type=int, default=256, help='hidden dimension')
 parser.add_argument('--num_layers', type=int, default=2, help='number of layers')
 parser.add_argument('--kernel_size', type=int, default=3, help='kernel size')
-parser.add_argument('--dropout', type=float, default=0.1, help='dropout rate')
 
 args = parser.parse_args()
 
@@ -103,6 +102,7 @@ Exp_dict = {
     'informer': Exp_Informer,
     'informerstack': Exp_Informer,
     'basic': Exp_BasicNN,
+    'custom': Exp_BasicNN,
     'SVR': Exp_SVR,
     'RFR': Exp_RFR,
 }
