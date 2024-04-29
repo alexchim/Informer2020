@@ -57,7 +57,7 @@ class BasicNN(nn.Module):
         combined = self.layer_norm(combined)
 
         # Output
-        dec_out = self.fc_out(combined)
+        output = self.fc_out(combined)
         
         # Assuming the last outputs are the required prediction outputs
-        return dec_out[:, -self.pred_len:, :]
+        return output[:, -self.pred_len:, :]

@@ -18,8 +18,15 @@ class Exp_SVR(object):
         self.args = args
         self.model = self._build_model()
         data, labels = self._get_data("train")
-        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(data, labels, test_size=0.2, random_state=42)
-        self.X_test, self.X_val, self.y_test, self.y_val = train_test_split(self.X_test, self.y_test, test_size=0.5, random_state=42)
+        border2s = [12*30*24, 12*30*24+4*30*24, 12*30*24+8*30*24]
+        self.X_train = data[0:border2s[0]]
+        self.y_train = labels[0:border2s[0]]
+        self.X_test = data[border2s[0]:border2s[1]]
+        self.y_test = labels[border2s[0]:border2s[1]]
+        self.X_val = data[border2s[1]:border2s[2]]
+        self.y_val = labels[border2s[1]:border2s[2]]
+        # self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(data, labels, test_size=0.2, random_state=42)
+        # self.X_test, self.X_val, self.y_test, self.y_val = train_test_split(self.X_test, self.y_test, test_size=0.5, random_state=42)
 
     def _build_model(self):
     # Here you could choose different kernels like 'linear', 'poly', 'rbf', 'sigmoid', etc.
