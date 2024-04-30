@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 import pandas as pd
 from exp.exp_basic import Exp_Basic
 from sklearn.svm import SVR
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
@@ -68,10 +68,12 @@ class Exp_SVR(object):
 
         predictions = self.model.predict(X_test)
         mse = mean_squared_error(y_test, predictions)
-        print(f'Training completed. Mean Squared Error on test set: {mse}')
+        mae = mean_absolute_error(y_test, predictions)
+        print(f'Training completed. Mean Squared Error on test set: {mse}, Mean Absolute Error on test set: {mae}')
 
     def test(self, setting):
         X_val, y_val = self.X_val, self.y_val
         predictions = self.model.predict(X_val)
         mse = mean_squared_error(y_val, predictions)
-        print(f'Testing completed. Mean Squared Error on validation set: {mse}')
+        mae = mean_absolute_error(y_val, predictions)
+        print(f'Testing completed. Mean Squared Error on validation set: {mse}, Mean Absolute Error on validation set: {mae}')
